@@ -100,16 +100,16 @@
 (define (calculate-similarity-score slist1 slist2)
   (let loop ((memoize (make-table size: (u64vector-length slist1) init: #f)) ;; Table for memoization
              (i 0)
-             (acc 0))
+             (total 0))
     (cond ((= i (u64vector-length slist1)) ;; Finished list
-           acc)
+           total)
           ((table-ref memoize (u64vector-ref slist1 i)) ;; Memoization of numbers in list1 that we've been through
-           (loop memoize (+ i 1) (+ acc (table-ref memoize (u64vector-ref slist1 i)))))
+           (loop memoize (+ i 1) (+ total (table-ref memoize (u64vector-ref slist1 i)))))
           (else ;; Calculate the score for a new number, and memoize it
            (let* ((occurrences (find-occurrences slist2 (u64vector-ref slist1 i)))
                   (score (* (u64vector-ref slist1 i) occurrences)))
              (table-set! memoize (u64vector-ref slist1 i) score)
-             (loop memoize (+ i 1) (+ acc score)))))))
+             (loop memoize (+ i 1) (+ total score)))))))
 
 (define (main)
   (let* ((input-file "inputs/day1.txt")
