@@ -32,26 +32,11 @@
 (define (guard-facing guard) (car guard))
 (define (guard-x guard) (cadr guard))
 (define (guard-y guard) (caddr guard))
-;; (define (guard-steps guard) (cadddr guard))
-
-;; (define (guard-move-x guard newx)
-;;   (list (guard-facing guard)
-;;         newx
-;;         (guard-y guard)
-;;         (+ (guard-steps guard) (abs (- newx (guard-x guard))))))
-
-;; (define (guard-move-y guard newy)
-;;   (list (guard-facing guard)
-;;         (guard-x guard)
-;;         newy
-;;         (+ (guard-steps guard) (abs (- newy (guard-y guard))))))
 
 (define (guard-rotate guard)
   (list (remainder (+ (guard-facing guard) 1) 4) ;; Clockwise rotation
         (guard-x guard)
-        (guard-y guard)
-        ;; (guard-steps guard)
-        ))
+        (guard-y guard)))
 
 ;; ========== File parsing ==========
 (define (count-lines filename)
@@ -79,56 +64,88 @@
 ;; ========== Solvers ==========
 
 ;; Finds the index of the caret (guard starting position) in map
-(define (get-start map)
+(define (get-start m)
   (let loop ((i 0)
-             (len (* (map-width map) (map-height map))))
+             (len (vector-length (map-data m))))
     (cond ((= i len)
            #f)
-          ((char=? (vector-ref (map-data map) i) #\^)
+          ((char=? (vector-ref (map-data m) i) #\^)
            i)
           (else
            (loop (+ i 1) len)))))
 
-;; Returns a new position after moving the guard towards the direction they're facing
-;; If the return is #f, this means the guard has moved out of the map
-(define (move-guard! guard map)
-  (define (try-move x y facing map)
+;; Constructs the path of the guard from the start until they're off the map
+;; Uses a hash table to avoid double-counting the same tiles
+(define (get-guard-path start map)
+  (define (build-path x y facing map counter)
     (let* ((idx (map-idx map x y))
            (dx (vector-ref *guard-dx* facing))
            (dy (vector-ref *guard-dy* facing)))
       (cond ((not (inside-map? map x y))
-             #f)
+             '())
             ((char=? (map-get-at map x y) #\#)
-             (cons (- x dx) (- y dy)))
+             (build-path (- x dx) (- y dy) (remainder (+ facing 1) 4) map counter))
             (else
-             (map-set-at! map x y #\X)
-             (try-move (+ x dx) (+ y dy) facing map)))))
-  (try-move (guard-x guard) (guard-y guard) (guard-facing guard) map))
+             (if (table-ref counter idx)
+                 (build-path (+ x dx) (+ y dy) facing map counter)
+                 (begin
+                   (table-set! counter idx #t)
+                   (cons idx
+                         (build-path (+ x dx) (+ y dy) facing map counter))))))))
+  (let ((p (map-pos map start)))
+    (build-path (car p) (cdr p) 3 map (make-table init: #f))))
 
-(define (count-traversed map)
-  (let loop ((i 0)
-             (len (* (map-height map) (map-width map)))
-             (count 0))
-    (let ((pos (map-pos map i)))
-      (cond ((= i len)
-             count)
-            ((char=? (map-get-at map (car pos) (cdr pos)) #\X)
-             (loop (+ i 1) len (+ count 1)))
+;; Tests if a given obstruction at some index will cause a loop for the guard
+;; Uses a hash table to store the last facing the guard was in some tile
+;; (same spot with same facing = has been here before = is looping)
+(define (test-for-loop start map obstruction-idx)
+  (define (traversal x y facing map path-taken)
+    (let* ((idx (map-idx map x y))
+           (last-facing (table-ref path-taken idx))
+           (dx (vector-ref *guard-dx* facing))
+           (dy (vector-ref *guard-dy* facing)))
+      (cond ((not (inside-map? map x y))
+             #f)
+            ((and last-facing (= facing last-facing))
+             #t)
+            ((or (= idx obstruction-idx) 
+                 (char=? (map-get-at map x y) #\#))
+             (traversal (- x dx) (- y dy) (remainder (+ facing 1) 4) map path-taken))
             (else
-             (loop (+ i 1) len count))))))
+             (when (not last-facing)
+               (table-set! path-taken idx facing))
+             (traversal (+ x dx) (+ y dy) facing map path-taken)))))
+  (let ((p (map-pos map start)))
+    (traversal (+ (car p) (vector-ref *guard-dx* 3))
+               (+ (cdr p) (vector-ref *guard-dy* 3))
+               3 map (make-table init: #f))))
 
-(define (navigate-map! map)
-  (define (move-loop guard map)
-    (let ((new-pos (move-guard! guard map)))
-      (when new-pos
-        (move-loop (guard-rotate
-                    (make-guard (guard-facing guard)
-                                (car new-pos)
-                                (cdr new-pos)))
-                   map))))
-  (let* ((start-idx (get-start map))
-         (x (car (map-pos map start-idx)))
-         (y (cdr (map-pos map start-idx)))
-         (g (make-guard 3 x y)))
-    (move-loop g map)
-    (count-traversed map)))
+;; Counts the number of possible loop-inducing obstructions
+;; Obstructions that will affect the guard's path will only do so if they are
+;; in the guard's path themselves, so we only need to test placing obstructions
+;; in the tiles along said path (with the procedure from part 1)
+;; NOTE: this is slooooooooooooooooow, yucky
+(define (count-looping-obstructions _map path)
+  (let ((start (get-start _map))
+        (count 0))
+    (for-each
+     (lambda (o)
+       (when (test-for-loop start _map o)
+         (set! count (+ count 1))))
+     (cdr path))
+    count))
+
+(define (main)
+  (let* ((input-file "inputs/day6.txt")
+         (lab-map (read-map input-file))
+         (guard-path (get-guard-path (get-start lab-map) lab-map))
+         (path-tile-count (length guard-path))
+         (obs-count (count-looping-obstructions lab-map guard-path)))
+    (display (string-append
+              "Length of guard path: "
+              (number->string path-tile-count)))
+    (newline)
+    (display (string-append
+              "Number of possible loop-inducing obstructions: "
+              (number->string obs-count)))
+    (newline)))
