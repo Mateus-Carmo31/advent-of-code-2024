@@ -31,6 +31,11 @@
          #f)))
 
 ;; Building a correct update
+;; This swaps pairs of incorrect update pages from left to right
+;; frankly I kinda didn't expect this to work, I was sure there would be cases
+;; where swapping would introduce new errors. But maybe, since the errors
+;; come from precedence (that is, a number being after the one they should be before)
+;; swapping from left to right made it impossible to introduce new errors?
 (define (fix-update update rules)
   (define (swap lst idx1 idx2) ;; This swap relies on there being no repetitions in an update
     (define (swapper l i e1 e2)
