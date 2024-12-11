@@ -102,7 +102,7 @@
 ;; Main function
 (define (main)
   (let* ((input-file "inputs/day7.txt"))
-    (reset-timer)
+    ;; (reset-timer)
     (set! *op-list* (vector-map eval #(+ *)))
     (display (string-append
               "Total (without ||): "
@@ -113,7 +113,8 @@
               "Total (with ||): "
               (number->string (parse-file input-file))) (current-output-port))
     (newline)
-    (get-times)))
+    ;; (get-times)
+    ))
 
 ;; This call is here can be used during compilation.
 ;; Either uncomment it or compile with gsc -exe -postlude "(main)" main.scm
